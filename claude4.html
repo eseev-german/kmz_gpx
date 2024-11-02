@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конвертер KMZ в GPX</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.7.0/gpx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .page-container {
+            min-height: 100%;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            flex: 1;
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .flex-container {
+            display: flex;
+            gap: 1.5rem;
+            height: calc(100vh - 160px);
+            min-height: 400px;
+        }
+
+        @media (max-width: 768px) {
+            .flex-container {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .page-container {
+                padding: 0.5rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.2rem;
+                margin-bottom: 1rem;
+            }
+        }
+
+        .left-panel {
+            flex: 1;
+            min-width: 250px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .right-panel {
+            flex: 2;
+            min-height: 300px;
+            position: relative;
+        }
+
+        @media (max-width: 768px) {
+            .right-panel {
+                height: 400px;
+            }
+        }
+
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 1.5rem;
+            text-align: center;
+            background-color: #fafafa;
+            cursor: pointer;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone:hover {
+            border-color: #999;
+            background-color: #f0f0f0;
+        }
+
+        .drop-zone p {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #ccc;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin: 1rem 0;
+            padding: 1rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+
+        #track-info {
+            margin-top: auto;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        #track-info h3 {
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        #track-info p {
+            margin-bottom: 0.5rem;
+        }
+
+        #track-info p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Стили для тач-устройств */
+        @media (hover: none) {
+            .drop-zone {
+                padding: 2rem;
+            }
+
+            button {
+                padding: 1rem;
+            }
+
+            #status, #track-info {
+                padding: 1rem;
+            }
+        }
+
+        /* Стили для маленьких экранов */
+        @media (max-width: 480px) {
+            .container {
+                padding: 0.75rem;
+                border-radius: 0;
+            }
+
+            h1 {
+                font-size: 1.1rem;
+            }
+
+            .drop-zone {
+                padding: 1rem;
+            }
+
+            #map {
+                border-radius: 4px;
+            }
+        }
+
+        /* Стили для ландшафтной ориентации на мобильных */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .flex-container {
+                flex-direction: row;
+                height: calc(100vh - 100px);
+            }
+
+            .right-panel {
+                height: 100%;
+            }
+
+            h1 {
+                margin-bottom: 0.75rem;
+            }
+        }
+
+        /* Стили для больших экранов */
+        @media (min-width: 1400px) {
+            .container {
+                margin: 1rem auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <div class="container">
+            <h1>Конвертер KMZ в GPX</h1>
+            <div class="flex-container">
+                <div class="left-panel">
+                    <div class="drop-zone" id="dropZone">
+                        <p>Перетащите KMZ файл сюда или кликните для выбора</p>
+                        <input type="file" id="fileInput" accept=".kmz" style="display: none">
+                    </div>
+                    <button id="convertBtn" disabled>Конвертировать в GPX</button>
+                    <div id="status"></div>
+                    <div id="track-info"></div>
+                </div>
+                <div class="right-panel">
+                    <div id="map"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const status = document.getElementById('status');
+        const trackInfo = document.getElementById('track-info');
+        let currentFile = null;
+        let map = null;
+        let currentGpxLayer = null;
+
+        // Инициализация карты
+        function initMap() {
+            map = L.map('map').setView([55.75, 37.62], 10); // Москва по умолчанию
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        initMap();
+
+        // Обработка перетаскивания файла
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#4CAF50';
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ccc';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ccc';
+            const files = e.dataTransfer.files;
+            handleFile(files[0]);
+        });
+
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            if (file && file.name.toLowerCase().endsWith('.kmz')) {
+                currentFile = file;
+                status.textContent = `Файл выбран: ${file.name}`;
+                status.className = 'success';
+                convertBtn.disabled = false;
+            } else {
+                status.textContent = 'Пожалуйста, выберите файл .kmz';
+                status.className = 'error';
+                convertBtn.disabled = true;
+            }
+        }
+
+        function extractRouteCoordinates(kmlDoc) {
+            const routes = [];
+            
+            // Ищем все LineString элементы
+            const lineStrings = kmlDoc.getElementsByTagName('LineString');
+            for (const lineString of lineStrings) {
+                const coordinates = lineString.getElementsByTagName('coordinates')[0];
+                if (coordinates && coordinates.textContent.trim()) {
+                    routes.push(coordinates.textContent.trim());
+                }
+            }
+
+            // Если LineString не найден, проверяем Track элементы
+            if (routes.length === 0) {
+                const tracks = kmlDoc.getElementsByTagName('Track');
+                for (const track of tracks) {
+                    const coordinates = track.getElementsByTagName('coordinates')[0];
+                    if (coordinates && coordinates.textContent.trim()) {
+                        routes.push(coordinates.textContent.trim());
+                    }
+                }
+            }
+
+            // Если и Track не найден, проверяем gx:Track элементы
+            if (routes.length === 0) {
+                const gxTracks = kmlDoc.getElementsByTagNameNS('*', 'Track');
+                for (const track of gxTracks) {
+                    const coords = [];
+                    const coordinates = track.getElementsByTagNameNS('*', 'coord');
+                    for (const coord of coordinates) {
+                        const [lon, lat, ele] = coord.textContent.trim().split(' ');
+                        coords.push(`${lon},${lat},${ele || '0'}`);
+                    }
+                    if (coords.length > 0) {
+                        routes.push(coords.join(' '));
+                    }
+                }
+            }
+
+            return routes;
+        }
+
+        function displayTrackOnMap(gpxContent) {
+            if (currentGpxLayer) {
+                map.removeLayer(currentGpxLayer);
+            }
+
+            // Создаем Blob из GPX контента
+            const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
+            const url = URL.createObjectURL(blob);
+
+            // Загружаем GPX на карту
+            currentGpxLayer = new L.GPX(url, {
+                async: true,
+                marker_options: {
+                    startIconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.7.0/pin-icon-start.png',
+                    endIconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.7.0/pin-icon-end.png',
+                    wptIconUrls: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.7.0/pin-icon-wpt.png'
+                }
+            }).on('loaded', function(e) {
+                map.fitBounds(e.target.getBounds());
+                
+                // Показываем информацию о маршруте
+                const trackDistance = (e.target.get_distance() / 1000).toFixed(2);
+                const elevationGain = e.target.get_elevation_gain().toFixed(0);
+                const elevationLoss = e.target.get_elevation_loss().toFixed(0);
+                
+                trackInfo.innerHTML = `
+                    <h3>Информация о маршруте:</h3>
+                    <p>Длина маршрута: ${trackDistance} км</p>
+                    <p>Набор высоты: ${elevationGain} м</p>
+                    <p>Потеря высоты: ${elevationLoss} м</p>
+                `;
+            }).addTo(map);
+
+            URL.revokeObjectURL(url);
+        }
+
+        convertBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+
+            try {
+                status.textContent = 'Конвертация...';
+                status.className = '';
+                
+                // Чтение KMZ файла
+                const zip = new JSZip();
+                const zipContent = await zip.loadAsync(currentFile);
+                
+                // Поиск doc.kml внутри KMZ
+                let kmlContent = '';
+                for (const filename in zipContent.files) {
+                    if (filename.toLowerCase().endsWith('.kml')) {
+                        kmlContent = await zipContent.files[filename].async('text');
+                        break;
+                    }
+                }
+
+                if (!kmlContent) {
+                    throw new Error('KML файл не найден внутри KMZ');
+                }
+
+                // Конвертация KML в GPX
+                const parser = new DOMParser();
+                const kmlDoc = parser.parseFromString(kmlContent, 'text/xml');
+                
+                // Получаем маршруты
+                const routes = extractRouteCoordinates(kmlDoc);
+
+                if (routes.length === 0) {
+                    throw new Error('Маршрут не найден в KML файле');
+                }
+
+                let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="KMZ to GPX Converter" xmlns="http://www.topografix.com/GPX/1/1">
+    <metadata>
+        <name>${currentFile.name.replace('.kmz', '')}</name>
+        <time>${new Date().toISOString()}</time>
+    </metadata>
+    <trk>
+        <name>Converted Track</name>
+`;
+
+                routes.forEach((route, index) => {
+                    gpxContent += `        <trkseg>\n`;
+                    const points = route.split(' ');
+                    points.forEach(point => {
+                        const [lon, lat, ele] = point.split(',');
+                        if (lon && lat) {
+                            gpxContent += `            <trkpt lat="${lat}" lon="${lon}">
+                <ele>${ele || '0'}</ele>
+            </trkpt>\n`;
+                        }
+                    });
+                    gpxContent += `        </trkseg>\n`;
+                });
+
+                gpxContent += `    </trk>
+</gpx>`;
+
+                // Отображаем маршрут на карте
+                displayTrackOnMap(gpxContent);
+
+                // Создание и скачивание GPX файла
+                const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFile.name.replace('.kmz', '.gpx');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                status.textContent = 'Конвертация успешно завершена!';
+                status.className = 'success';
+            } catch (error) {
+                status.textContent = `Ошибка: ${error.message}`;
+                status.className = 'error';
+                trackInfo.innerHTML = '';
+            }
+        });
+    </script>
+</body>
+</html>
